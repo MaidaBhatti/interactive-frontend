@@ -1,34 +1,48 @@
 import { useEffect, useState } from 'react';
-import { fetchTracks } from '../services/api';
+import { fetchTracks, fetchArtists, fetchAlbums } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 export default function Tracks() {
   const [tracks, setTracks] = useState([]);
+  const [artists, setArtists] = useState([]);
+  const [albums, setAlbums] = useState([]);
   const [title, setTitle] = useState('');
-  const [artist, setArtist] = useState('');
-  const [album, setAlbum] = useState('');
+  const [selectedArtist, setSelectedArtist] = useState('');
+  const [selectedAlbum, setSelectedAlbum] = useState('');
   const [duration, setDuration] = useState('');
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState(new Set());
+  const [loadingArtists, setLoadingArtists] = useState(true);
+  const [loadingAlbums, setLoadingAlbums] = useState(true);
 
   const navigate = useNavigate();
 
-  // Fetch tracks
+  // Fetch initial data
   useEffect(() => {
-    const loadTracks = async () => {
+    const loadData = async () => {
       try {
-        const data = await fetchTracks();
-        setTracks(data);
+        const [tracksData, artistsData, albumsData] = await Promise.all([
+          fetchTracks(),
+          fetchArtists(),
+          fetchAlbums()
+        ]);
+        
+        setTracks(tracksData);
+        setArtists(artistsData);
+        setAlbums(albumsData);
+        setLoadingArtists(false);
+        setLoadingAlbums(false);
       } catch (err) {
-        console.error('Failed to fetch tracks:', err);
+        console.error('Failed to load data:', err);
+        alert('Failed to load initial data');
       }
     };
-    loadTracks();
+    loadData();
   }, []);
 
   // Add new track
   const handleAddTrack = async () => {
-    if (!title || !artist || !album || !duration) {
+    if (!title || !selectedArtist || !selectedAlbum || !duration) {
       return alert('Please fill in all fields.');
     }
 
@@ -48,8 +62,8 @@ export default function Tracks() {
         },
         body: JSON.stringify({
           title,
-          artist: { name: artist },
-          album: { title: album },
+          artist: selectedArtist,
+          album: selectedAlbum,
           duration: durationNum,
         }),
       });
@@ -59,9 +73,10 @@ export default function Tracks() {
 
       setTracks((prev) => [...prev, data]);
       setTitle('');
-      setArtist('');
-      setAlbum('');
+      setSelectedArtist('');
+      setSelectedAlbum('');
       setDuration('');
+      alert('Track added successfully!');
     } catch (err) {
       console.error('Error adding track:', err);
       alert(err.message || 'Error adding track');
@@ -84,17 +99,15 @@ export default function Tracks() {
         },
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.message || 'Failed to delete track');
-      }
+      if (!response.ok) throw new Error('Failed to delete track');
 
-      setTracks((prev) => prev.filter((track) => track._id !== id));
-      setFavorites((prev) => {
+      setTracks(prev => prev.filter(track => track._id !== id));
+      setFavorites(prev => {
         const updated = new Set(prev);
         updated.delete(id);
         return updated;
       });
+      alert('Track deleted successfully!');
     } catch (err) {
       console.error('Error deleting track:', err);
       alert(err.message || 'Error deleting track');
@@ -103,13 +116,9 @@ export default function Tracks() {
 
   // Toggle favorite
   const toggleFavorite = (id) => {
-    setFavorites((prev) => {
+    setFavorites(prev => {
       const updated = new Set(prev);
-      if (updated.has(id)) {
-        updated.delete(id);
-      } else {
-        updated.add(id);
-      }
+      updated.has(id) ? updated.delete(id) : updated.add(id);
       return updated;
     });
   };
@@ -121,6 +130,7 @@ export default function Tracks() {
       {/* Add Track Form */}
       <div className="bg-gray-900 p-6 rounded-lg shadow-lg max-w-xl mx-auto mb-12 space-y-4">
         <h2 className="text-2xl font-semibold mb-2">Add New Track</h2>
+        
         <input
           type="text"
           placeholder="Track Title"
@@ -128,20 +138,45 @@ export default function Tracks() {
           onChange={(e) => setTitle(e.target.value)}
           className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
         />
-        <input
-          type="text"
-          placeholder="Artist Name"
-          value={artist}
-          onChange={(e) => setArtist(e.target.value)}
-          className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-        />
-        <input
-          type="text"
-          placeholder="Album Title"
-          value={album}
-          onChange={(e) => setAlbum(e.target.value)}
-          className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
-        />
+
+        <div className="relative">
+          <select
+            value={selectedArtist}
+            onChange={(e) => setSelectedArtist(e.target.value)}
+            className="w-full p-3 rounded bg-gray-800 text-white appearance-none"
+            disabled={loadingArtists}
+          >
+            <option value="">Select Artist</option>
+            {artists.map((artist) => (
+              <option key={artist._id} value={artist._id}>
+                {artist.name}
+              </option>
+            ))}
+          </select>
+          {loadingArtists && (
+            <span className="absolute right-3 top-3 text-gray-400">Loading...</span>
+          )}
+        </div>
+
+        <div className="relative">
+          <select
+            value={selectedAlbum}
+            onChange={(e) => setSelectedAlbum(e.target.value)}
+            className="w-full p-3 rounded bg-gray-800 text-white appearance-none"
+            disabled={loadingAlbums}
+          >
+            <option value="">Select Album</option>
+            {albums.map((album) => (
+              <option key={album._id} value={album._id}>
+                {album.title}
+              </option>
+            ))}
+          </select>
+          {loadingAlbums && (
+            <span className="absolute right-3 top-3 text-gray-400">Loading...</span>
+          )}
+        </div>
+
         <input
           type="number"
           placeholder="Duration (seconds)"
@@ -149,6 +184,7 @@ export default function Tracks() {
           onChange={(e) => setDuration(e.target.value)}
           className="w-full p-3 rounded bg-gray-800 text-white placeholder-gray-400"
         />
+
         <button
           onClick={handleAddTrack}
           disabled={loading}
@@ -168,7 +204,7 @@ export default function Tracks() {
           tracks.map((track) => (
             <div
               key={track._id}
-              className="bg-gray-800 p-5 rounded-lg transition relative"
+              className="bg-gray-800 p-5 rounded-lg transition relative hover:bg-gray-700"
             >
               <div className="cursor-pointer" onClick={() => navigate(`/track/${track._id}`)}>
                 <h3 className="text-lg font-semibold">{track.title}</h3>
@@ -182,17 +218,17 @@ export default function Tracks() {
               <div className="flex justify-between items-center mt-4 space-x-2">
                 <button
                   onClick={() => toggleFavorite(track._id)}
-                  className={`text-sm px-3 py-1 rounded-full ${
+                  className={`text-sm px-3 py-1 rounded-full transition ${
                     favorites.has(track._id)
-                      ? 'bg-yellow-500 text-black'
-                      : 'bg-gray-700 text-white'
+                      ? 'bg-yellow-500 text-black hover:bg-yellow-600'
+                      : 'bg-gray-700 text-white hover:bg-gray-600'
                   }`}
                 >
                   {favorites.has(track._id) ? '★ Fav' : '☆ Fav'}
                 </button>
                 <button
                   onClick={() => handleDelete(track._id)}
-                  className="text-sm px-3 py-1 rounded-full bg-red-600 hover:bg-red-700"
+                  className="text-sm px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 transition"
                 >
                   🗑 Delete
                 </button>
